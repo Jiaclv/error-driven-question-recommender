@@ -1,0 +1,56 @@
+{
+    "total_users": 1355,
+    "processed_users": 1355,
+    "k_metrics": {
+        "10": {
+            "hit_rate_sum": 560.9194444444437,
+            "hit_success_rate_sum": 1206.0,
+            "covered_users": 1206,
+            "total_hits": 4624,
+            "successful_hits": 4624,
+            "hit_rate_avg": 0.4139626896268957,
+            "hit_success_rate_avg": 0.8900369003690037,
+            "user_coverage": 0.8900369003690037
+        },
+        "20": {
+            "hit_rate_sum": 711.8659236618215,
+            "hit_success_rate_sum": 1285.0,
+            "covered_users": 1285,
+            "total_hits": 8009,
+            "successful_hits": 8009,
+            "hit_rate_avg": 0.5253623052854771,
+            "hit_success_rate_avg": 0.948339483394834,
+            "user_coverage": 0.948339483394834
+        },
+        "30": {
+            "hit_rate_sum": 900.8012029702868,
+            "hit_success_rate_sum": 1312.0,
+            "covered_users": 1312,
+            "total_hits": 10865,
+            "successful_hits": 10865,
+            "hit_rate_avg": 0.6647979357714293,
+            "hit_success_rate_avg": 0.9682656826568266,
+            "user_coverage": 0.9682656826568266
+        },
+        "40": {
+            "hit_rate_sum": 1076.8515997370664,
+            "hit_success_rate_sum": 1321.0,
+            "covered_users": 1321,
+            "total_hits": 13382,
+            "successful_hits": 13382,
+            "hit_rate_avg": 0.7947244278502336,
+            "hit_success_rate_avg": 0.9749077490774908,
+            "user_coverage": 0.9749077490774908
+        },
+        "50": {
+            "hit_rate_sum": 1218.8963519156148,
+            "hit_success_rate_sum": 1323.0,
+            "covered_users": 1323,
+            "total_hits": 15477,
+            "successful_hits": 15477,
+            "hit_rate_avg": 0.8995545032587563,
+            "hit_success_rate_avg": 0.9763837638376384,
+            "user_coverage": 0.9763837638376384
+        }
+    }
+}
