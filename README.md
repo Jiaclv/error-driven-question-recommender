@@ -2,12 +2,11 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue)](https://www.python.org/)
 [![PyTorch](https://img.shields.io/badge/PyTorch-2.x-red)](https://pytorch.org/)
-[![Jupyter](https://img.shields.io/badge/Jupyter-Notebook-orange)](https://jupyter.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 A knowledge-tracing-based recommender that predicts **which questions a student
 is about to answer incorrectly** — and recommends exactly those, so practice
-time is spent on real knowledge gaps instead of comfortable repetition.
+time goes to real knowledge gaps instead of comfortable repetition.
 
 Built on the public [XES3G5M](https://github.com/ai4ed/XES3G5M) dataset
 (NeurIPS 2023 Datasets & Benchmarks). Full write-up in
@@ -20,119 +19,113 @@ Built on the public [XES3G5M](https://github.com/ai4ed/XES3G5M) dataset
 Most practice systems recommend questions a student can already solve, which
 keeps accuracy high but teaches little. This project inverts the objective:
 **recommend the questions the model predicts the student will get wrong.**
-That makes the recommendation a *diagnosis*, and it also makes the system easy
-to evaluate — either the flagged questions really are the ones the student
-fails, or they are not.
+That turns each recommendation into a *diagnosis* — and makes the system easy
+to evaluate offline: either the flagged questions really are the ones the
+student fails, or they are not.
 
 ## Pipeline
 
 ```mermaid
 flowchart LR
-    A["XES3G5M<br/>(kc-level sequences)"] --> B["Preprocessing<br/>Extended-Thinking module · ≥120 questions<br/>≤90-day window → 10,382 users<br/>5,772 questions · 7 modules"]
-    B --> C["ADGKT<br/>attention + GRU knowledge tracing"]
+    A["XES3G5M<br/>(kc-level sequences)"] --> B["Preprocessing<br/>Extended-Thinking subtree · ≥120 questions<br/>≤90-day window → 10,382 sequences<br/>(7,319 students) · 5,772 questions · 7 modules"]
+    B --> C["ADGKT<br/>causal self-attention + GRU"]
     B --> E["DKT<br/>LSTM baseline"]
     C --> D["Per-question correctness probability"]
-    E --> F["AUC comparison"]
-    D --> G["Prediction–Select–Verification<br/>fixed threshold θ = 0.1"]
-    G --> H["Top-k recommendation<br/>+ cold-start evaluation"]
+    E --> F["AUC comparison<br/>(same split)"]
+    D --> G["Prediction–Select–Verification<br/>flag p(correct) ≤ θ"]
+    D --> H["Error-driven Top-K<br/>rank ascending p(correct)"]
 ```
 
-### Models
+### Model — ADGKT (attention-augmented knowledge tracing)
 
-- **ADGKT** (Attention-augmented Deep Knowledge Tracing) — question, concept
-  and response embeddings are fused per interaction; multi-head self-attention
-  (4 heads, residual + LayerNorm) captures cross-reference dependencies in the
-  sequence; a GRU refines the temporal knowledge state; the target question's
-  embeddings are concatenated with the sequence state to output a correctness
-  probability. *(embed 128 · hidden 128 · dropout 0.2 · 10 epochs — see
-  [`models/training_config.json`](models/training_config.json))*
-- **DKT baseline** — canonical LSTM-based deep knowledge tracing with
-  question–response embeddings, for an honest AUC reference point.
+Per interaction, question and module embeddings are fused and the response
+embedding is added residually; one **causally-masked multi-head self-attention
+block** (4 heads) retrieves relevant earlier interactions; a **GRU** condenses
+the attended sequence into a temporal knowledge state; the state is
+concatenated with the target question's embedding to output a correctness
+probability (BCE loss, padding-masked). A canonical LSTM **DKT** baseline is
+trained under the identical split for an honest reference.
 
-### Evaluation: Prediction–Select–Verification
+*(embed 128 · hidden 128 · 4 heads · dropout 0.2 · 10 epochs · batch 32 —
+see [`models/training_config.json`](models/training_config.json))*
 
-Standard AUC alone cannot show whether a *recommender* finds the right
-questions. The pipeline therefore adds a sequential validation framework:
+### Evaluation — Prediction–Select–Verification (PSV)
 
-1. **Predict** — mask everything after time *t*; the model scores all future
-   questions.
-2. **Select** — questions with predicted correctness probability below a fixed
-   threshold (θ = 0.1) are flagged as "likely errors" and recommended.
-3. **Verify** — unmask the student's actual future answers and check whether
-   the flagged questions were really answered incorrectly.
+Standard offline metrics cannot show whether a *recommender* picks the right
+questions: there is no ground truth for "what would have happened if we had
+recommended X". Strict set-matching against what the student naturally did
+next fails almost completely. PSV sidesteps this by using the student's own
+future as the verifier:
 
-This turns recommendation quality into a directly verifiable precision/coverage
-statement per user, and is repeated across thresholds (0.1–0.9) for
-sensitivity analysis. Top-k ranking and a cold-start setting (users disjoint
-from training) are evaluated with the same machinery.
+1. **Predict** — for every step *t*, the model sees only interactions before
+   *t* and scores the next question.
+2. **Select** — questions with p(correct) ≤ θ (default 0.1) are flagged as
+   "likely errors" and recommended.
+3. **Verify** — the student's actual response at *t* decides whether the flag
+   was a true diagnosis.
+
+Evaluation users come from the official XES3G5M `test.csv` split — **every
+user is disjoint from training** (cold start by construction). The natural
+error rate over the same evaluated positions provides the blind-pick baseline,
+and θ is swept 0.1–0.9 to map the precision–coverage trade-off.
 
 ## Results
 
 | Metric | Value |
 |---|---|
-| Validation AUC — ADGKT | **0.961** |
+| Validation AUC — ADGKT (causal-masked) | **0.839** |
 | Validation AUC — DKT baseline | 0.825 |
-| Top-10 hit rate / coverage | 41.4% / 89.0% |
-| Top-50 hit rate / coverage | 90.0% / 97.6% |
-| Users with ≥1 verified hit (θ = 0.1) | 89.7% |
-| Flagged questions actually answered wrong (θ = 0.1) | **77.3%** |
-| Base error rate of retained users | ≈ 20% |
-| **Lift over base error rate** | **≈ 3.7–3.9×** |
+| Evaluation users (zero overlap with training) | 1,355 |
+| Natural error rate over evaluated positions | 22.3% |
+| Flagged questions actually answered wrong (θ = 0.1) | **98.3%** |
+| **Lift over natural error rate** | **4.4×** |
+| Users with ≥1 verified weak point (θ = 0.1) | 84.7% |
+| Avg flagged questions per user (θ = 0.1) | 4.0 |
+| Full-catalog Top-K precision@10 / @50 | 0.2% / 0.2% |
 
-Model-flagged questions are wrong far more often than the ≈20% base rate —
-the core claim of the error-driven approach. The final report's independent
-cold-start evaluation reaches the same conclusion (74.4% hit success rate,
-≈90% user coverage, 8.7 hits/user on average).
+The last row is the honest quantification of *why PSV is needed*: when the
+recommender must pick from all 5,700+ unseen questions, checking against what
+the student naturally does next almost never intersects (hit rates
+0.2–1.5% for K = 10–50) — natural re-encounter is too sparse to validate a
+recommender against. PSV instead verifies every flag directly against the
+student's own future answers, at any operating threshold.
 
-**Validation AUC — ADGKT vs DKT baseline**
+A balanced operating point is θ = 0.3: **85.6% precision, 90.9% user coverage,
+≈8 flags per user** — the sweep maps the full trade-off.
 
-![Validation AUC comparison](figures/01_validation_auc_adgkt_vs_dkt.png)
+Figures (regenerated by `python -m edqr.figures --data-dir data/XES3G5M`):
 
-**Top-k recommendation metrics** (hit rate = recall over future wrong
-questions; hit success rate = precision of flagged questions; coverage = share
-of users served)
+| Figure | File |
+|---|---|
+| Validation AUC — ADGKT vs DKT | [`figures/01_validation_auc.png`](figures/01_validation_auc.png) |
+| Error-driven Top-K metrics | [`figures/02_topk_metrics.png`](figures/02_topk_metrics.png) |
+| PSV hit summary at θ = 0.1 | [`figures/03_psv_summary.png`](figures/03_psv_summary.png) |
+| Threshold sensitivity (0.1 → 0.9) | [`figures/04_threshold_sensitivity.png`](figures/04_threshold_sensitivity.png) |
+| Error rate by sequence position | [`figures/05_error_rate_by_position.png`](figures/05_error_rate_by_position.png) |
 
-![Top-k metrics](figures/02_topk_metrics.png)
-
-**Prediction–Select–Verification at θ = 0.1** — of the 1,355 evaluated users,
-89.7% received at least one verified hit, and 77.3% of all flagged questions
-were indeed answered incorrectly (8,262 vs 2,425)
-
-![Hit summary](figures/03_hit_summary.png)
-
-**Verified-hit anatomy** — predicted-probability distribution of hits, their
-actual response split, where in the sequence they occur, and the actual error
-rate (0.77) versus the 0.5 random baseline
-
-![MSV verification analysis](figures/04_msv_verification_analysis.png)
-
-**Threshold sensitivity (0.1 → 0.9)** — the coverage/precision trade-off of
-the fixed-threshold strategy
-
-![Threshold sensitivity](figures/05_threshold_sensitivity.png)
-
-**Error rate by sequence position** — no strong position effect; flagged
-errors are not an artifact of late-sequence fatigue
-
-![Error rate by position](figures/06_error_rate_by_position.png)
-
-Machine-readable outputs: [`results/topk_evaluation_results.json`](results/topk_evaluation_results.json),
-[`results/per_user_topk_evaluation.csv`](results/per_user_topk_evaluation.csv).
+Machine-readable outputs live in [`results/`](results/) —
+`psv_results.json` (threshold sweep) and `topk_evaluation_results.json`.
 
 ## Repository structure
 
 ```
 error-driven-question-recommender/
+├── edqr/                       # importable package
+│   ├── config.py               # dataclasses: data / model / train / eval settings
+│   ├── data.py                 # filtering, id maps, dataset classes
+│   ├── models.py               # ADGKT (causal attention) + DKT
+│   ├── train.py                # python -m edqr.train --model adgkt|dkt
+│   ├── evaluate.py             # PSV + error-driven Top-K evaluation
+│   └── figures.py              # README figures from results files
 ├── notebooks/
-│   └── adgkt_msv_pipeline.ipynb    # end-to-end: EDA → preprocessing → training → evaluation
-├── figures/                        # result figures (rendered above)
-├── results/                        # evaluation outputs (JSON / CSV)
-├── models/                         # trained ADGKT checkpoint + hyperparameters + id maps
+│   └── walkthrough.ipynb       # end-to-end demo on a sample of users
+├── figures/                    # result figures (rendered above)
+├── results/                    # evaluation outputs (JSON)
+├── models/                     # checkpoints, id maps, training logs
 ├── docs/
-│   └── report.pdf                  # full technical report (anonymized)
-├── data/                           # empty — put XES3G5M here, see data/README.md
-├── requirements.txt
-└── LICENSE
+│   └── report.pdf              # course technical report (anonymized)
+├── data/                       # empty — put XES3G5M here (see data/README.md)
+└── requirements.txt
 ```
 
 ## Getting started
@@ -141,31 +134,57 @@ error-driven-question-recommender/
 pip install -r requirements.txt
 ```
 
-Download the dataset (≈8 GB, only two subsets are actually needed) and place
-it under `data/XES3G5M/` — step-by-step instructions in
-[`data/README.md`](data/README.md). Then run the notebook top-to-bottom:
+Download the dataset (only two subsets are needed; ≈8 GB total) and place it
+under `data/XES3G5M/` — instructions in [`data/README.md`](data/README.md).
 
 ```bash
-jupyter notebook notebooks/adgkt_msv_pipeline.ipynb
+# 1. train (GPU recommended; ~10 epochs)
+python -m edqr.train --model adgkt --data-dir data/XES3G5M
+python -m edqr.train --model dkt  --data-dir data/XES3G5M
+
+# 2. evaluate (the shipped checkpoint can skip step 1)
+python -m edqr.evaluate --mode sweep --data-dir data/XES3G5M
+python -m edqr.evaluate --mode topk  --data-dir data/XES3G5M
+
+# 3. regenerate README figures
+python -m edqr.figures --data-dir data/XES3G5M
 ```
 
-A GPU is recommended for training (the included checkpoint trains in ~10
-epochs). The KC tree file (`kc_tree_with_qids.json`) is regenerated
-automatically on first run. `models/adgkt_model_epoch10.pth` allows skipping
-retraining for the evaluation sections.
+## Changelog — v2 refactor
+
+This repository was refactored from a single 123-cell notebook into the
+`edqr` package, and **three correctness bugs in the original implementation
+were fixed** along the way:
+
+1. **Label leakage in attention (the big one).** The original
+   `nn.MultiheadAttention` call passed no `attn_mask`, so the prediction for
+   step *t* could attend to interaction *t+1* — whose embedding contains the
+   very response being predicted. Validation AUC was inflated to ≈0.96 and
+   the ADGKT-vs-DKT gap was largely an artifact of this leak. The attention
+   now uses a lower-triangular causal mask; PSV-style evaluation (history
+   only) was never affected.
+2. **Loss mask collision.** `mask = (target_q > 0)` silently dropped every
+   target mapped to question id 0. Ids now start at 1 and the mask is
+   length-based.
+3. **Duplicate "cold-start" section.** The notebook's cold-start cell
+   re-ran the main evaluation; README numbers cited from a different,
+   unreproducible run. The official test split (users disjoint from
+   training) now *is* the documented cold-start setting.
+
+Reported numbers come from the fixed code, are reproducible with the commands
+above, and are therefore lower — and honest.
 
 ## Roadmap
 
 - [ ] Probability calibration (the model is over-confident at low probabilities)
 - [ ] Learning-to-rank on top of predicted error probabilities
-- [ ] Uncertainty estimation for high-stakes recommendations
-- [ ] Explainable recommendations (which prior interactions caused the flag)
+- [ ] Dose control: mix diagnosis questions with reach questions (85% rule)
+- [ ] Explainable flags (which prior interactions caused the prediction)
 - [ ] Lightweight deployment (batch scoring API + monitoring)
-- [ ] GraphRAG / LLM-agent layer for explanation-aware recommendation *(planned — not yet implemented)*
 
 ## Tech stack
 
-Python · PyTorch · pandas / NumPy · scikit-learn · matplotlib / seaborn · Jupyter
+Python · PyTorch · pandas / NumPy · scikit-learn · matplotlib · Jupyter
 
 ---
 
@@ -173,7 +192,7 @@ Python · PyTorch · pandas / NumPy · scikit-learn · matplotlib / seaborn · J
 
 **错误驱动的题目推荐系统**：不推"学生已会做"的题，而是预测"学生即将做错"的题并精准推荐，把练习时间花在真正的知识漏洞上。
 
-- **数据**：公开数据集 XES3G5M（NeurIPS 2023），筛取"思维拓展"模块、做题数 ≥120 且时间跨度 ≤90 天的用户，最终 10,382 名用户、5,772 道题、7 个顶层知识模块。
-- **模型**：自研 **ADGKT**（多头自注意力 + GRU 的深度知识追踪），验证集 AUC **0.961**，显著高于 DKT 基线的 0.825。
-- **评估**：设计 **Prediction–Select–Verification** 序贯验证框架——遮蔽未来作答、以固定阈值 θ=0.1 挑出"预测会错"的题，再用真实作答验证。结果：**77.3% 被标记的题确实做错**，相对 ≈20% 的基础错误率提升约 **3.7–3.9 倍**；Top-50 命中率 90%、用户覆盖率 97.6%；冷启动场景下命中率 74.4%。
-- 完整技术报告见 [`docs/report.pdf`](docs/report.pdf)，全部结果可在 notebook 中复现。
+- **数据**：公开数据集 XES3G5M（NeurIPS 2023），筛取"拓展思维"子树、做题数 ≥120 且时间跨度 ≤90 天的用户，最终 10,382 条序列（7,319 名学生）、5,772 道题、7 个顶层知识模块；评估使用官方 test 划分中与训练完全零重叠的用户。
+- **模型**：注意力增强的知识追踪模型 **ADGKT**（因果掩码多头自注意力 + GRU 混合架构）与 DKT 基线在同一划分下对照。
+- **评估**：设计 **Prediction–Select–Verification** 序贯验证协议——遮蔽未来作答、标记"预测会错"的题、用真实作答回验。θ=0.1 时 **98.3% 被标记的题确实做错**，相对自然错误率 22.3% 放大约 **4.4 倍**；并以 0.1–0.9 阈值扫描刻画精度–覆盖权衡。
+- v2 重构修复了原实现的三处缺陷（注意力标签泄漏、损失掩码碰撞、不可复现的冷启动数字），所有结果可由上述命令复现。完整技术报告见 [`docs/report.pdf`](docs/report.pdf)。

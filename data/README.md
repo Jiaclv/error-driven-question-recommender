@@ -34,9 +34,9 @@ The remaining files of the official release (`question_level/`, embeddings,
 images, `test_question_window_sequences.csv`) are not used by the pipeline and
 can be skipped to save space.
 
-`data/XES3G5M/metadata/kc_tree_with_qids.json` is **generated automatically**
-by the notebook (section 1.1.4, *Build KC Tree Structure*) the first time you
-run it — you do not need to obtain it separately.
+`edqr` reads question-to-module routes directly from
+`questions.json` (`kc_routes`), so no KC-tree file needs to be generated
+separately.
 
 ## Preprocessing summary
 

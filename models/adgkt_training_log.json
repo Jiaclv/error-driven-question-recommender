@@ -1,0 +1,78 @@
+{
+  "model": "adgkt",
+  "epochs": 10,
+  "device": "cpu",
+  "seed": 42,
+  "per_epoch": [
+    {
+      "epoch": 1,
+      "train_loss": 0.4091137732909276,
+      "val_auc": 0.8040194663437251
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.36881310288722696,
+      "val_auc": 0.8277900037556962
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.35356894538952754,
+      "val_auc": 0.8361663882053781
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.3461006065515371,
+      "val_auc": 0.8382351402243077
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.34096323031645553,
+      "val_auc": 0.8392781528629953
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.33741980928641097,
+      "val_auc": 0.8392881588682436
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.33395841827759376,
+      "val_auc": 0.8389452974351032
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.3305002897519332,
+      "val_auc": 0.8375349954038799
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.3274660867911119,
+      "val_auc": 0.8386544666603974
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.32424939384827245,
+      "val_auc": 0.8366620081168797
+    }
+  ],
+  "best_val_auc": 0.8392881588682436,
+  "best_epoch": 6,
+  "data_stats": {
+    "raw_users": 33397,
+    "filtered_users": 22449,
+    "final_users": 10382,
+    "num_questions": 5772,
+    "num_modules": 7,
+    "modules": [
+      "几何模块",
+      "应用题模块",
+      "数论模块",
+      "组合模块",
+      "行程模块",
+      "计数模块",
+      "计算模块"
+    ],
+    "train_sequences": 10382,
+    "val_sequences": 10382
+  }
+}
